@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String     @id @default(uuid())
+  sku         String     @unique
+  name        String
+  category    String
+  costPrice   Float
+  salePrice   Float
+  stock       Int
+  minStock    Int
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  saleItems   SaleItem[]
+
+  @@map("products")
+}
+
+model Sale {
+  id            String     @id @default(uuid())
+  receiptNumber String     @unique
+  date          DateTime   @default(now())
+  subtotal      Float
+  discount      Float      @default(0)
+  total         Float
+  paymentMethod String     // EFECTIVO | MERCADOPAGO | TARJETA | TRANSFERENCIA
+  cashReceived  Float?
+  cashChange    Float?
+  customerName  String?
+  notes         String?
+  createdAt     DateTime   @default(now())
+  items         SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id         String   @id @default(uuid())
+  saleId     String
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name       String
+  sku        String?
+  price      Float
+  quantity   Int
+  isCustom   Boolean  @default(false)
+  subtotal   Float
+
+  @@map("sale_items")
+}
+
+model WorkOrder {
+  id            String    @id @default(uuid())
+  orderNumber   String    @unique
+  clientName    String
+  clientPhone   String
+  clientAddress String?
+  isHomeService Boolean   @default(false)
+  orderType     String
+  description   String
+  status        String    @default("PENDIENTE") // PENDIENTE | EN_PROCESO | TERMINADO | ENTREGADO
+  estimatedCost Float
+  deposit       Float     @default(0)
+  balance       Float
+  createdAt     DateTime  @default(now())
+  promisedDate  DateTime?
+  completedAt   DateTime?
+  notes         String?
+
+  @@map("work_orders")
+}

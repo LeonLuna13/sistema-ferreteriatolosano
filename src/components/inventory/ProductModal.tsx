@@ -68,7 +68,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const marginPercentage =
     numericCost > 0 ? Math.round((profit / numericCost) * 100) : 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!sku.trim() || !name.trim()) {
@@ -85,7 +85,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     const finalMinStock = Number(minStock) || 0;
 
     if (productToEdit) {
-      updateProduct(productToEdit.id, {
+      await updateProduct(productToEdit.id, {
         sku: sku.trim().toUpperCase(),
         name: name.trim(),
         category,
@@ -96,7 +96,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         description: description.trim(),
       });
     } else {
-      addProduct({
+      await addProduct({
         sku: sku.trim().toUpperCase(),
         name: name.trim(),
         category,

@@ -74,7 +74,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
   const numericDeposit = Number(deposit) || 0;
   const balance = Math.max(0, numericCost - numericDeposit);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!clientName.trim() || !clientPhone.trim() || !description.trim()) {
@@ -88,7 +88,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
     }
 
     if (orderToEdit) {
-      updateWorkOrder(orderToEdit.id, {
+      await updateWorkOrder(orderToEdit.id, {
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
         clientAddress: isHomeService ? clientAddress.trim() : '',
@@ -102,7 +102,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
         notes: notes.trim(),
       });
     } else {
-      addWorkOrder({
+      await addWorkOrder({
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
         clientAddress: isHomeService ? clientAddress.trim() : '',

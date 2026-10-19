@@ -18,7 +18,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
-  const { stats, cart, resetAllData } = useApp();
+  const { stats, cart, resetAllData, isBackendConnected, refreshData } = useApp();
 
   const handleReset = () => {
     if (window.confirm('¿Deseas restablecer todos los datos a los valores de prueba iniciales de Tolosano?')) {
@@ -154,22 +154,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
         <div className="border-t border-slate-800 p-4 bg-slate-950/30">
           <div className="rounded-xl bg-slate-800/60 p-3 border border-slate-700/50">
             <div className="flex items-center justify-between text-xs text-slate-300 mb-1">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Etapa 1: Frontend Mock
+              <span className="flex items-center gap-1.5 font-medium">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    isBackendConnected
+                      ? 'bg-emerald-400 animate-pulse'
+                      : 'bg-amber-400'
+                  }`}
+                ></span>
+                {isBackendConnected ? 'Backend Conectado' : 'Modo Offline / Local'}
               </span>
-              <span className="font-mono text-[10px] text-slate-400">v1.0.0</span>
+              <span className="font-mono text-[10px] text-slate-400">
+                {isBackendConnected ? 'API: 3000' : 'Mocks'}
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-tight mb-2.5">
-              Datos sincronizados localmente en tu navegador.
+              {isBackendConnected
+                ? 'Conectado a PostgreSQL y Express REST API.'
+                : 'Peticiones apuntando a http://localhost:3000/api.'}
             </p>
-            <button
-              onClick={handleReset}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-700/80 hover:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors border border-slate-600/50"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Restablecer datos demo
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                onClick={handleReset}
+                title="Restablecer datos demo"
+                className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-slate-700/80 hover:bg-slate-700 px-2 py-1.5 text-xs font-medium text-slate-200 transition-colors border border-slate-600/50"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset Demo
+              </button>
+              <button
+                onClick={() => refreshData()}
+                title="Reintentar conexión con el servidor backend"
+                className="flex items-center justify-center gap-1 rounded-lg bg-blue-900/80 hover:bg-blue-800 px-2 py-1.5 text-xs font-medium text-blue-200 transition-colors border border-blue-700/50"
+              >
+                Reconectar
+              </button>
+            </div>
           </div>
         </div>
       </aside>

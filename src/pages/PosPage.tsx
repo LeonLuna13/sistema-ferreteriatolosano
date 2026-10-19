@@ -69,7 +69,7 @@ export const PosPage: React.FC = () => {
       ? numericCash - grandTotal
       : 0;
 
-  const handleConfirmSale = () => {
+  const handleConfirmSale = async () => {
     if (cart.length === 0) return;
 
     if (paymentMethod === 'EFECTIVO' && numericCash < grandTotal && numericCash > 0) {
@@ -77,7 +77,7 @@ export const PosPage: React.FC = () => {
       return;
     }
 
-    const sale = completeSale({
+    const sale = await completeSale({
       paymentMethod,
       discount: numericDiscount,
       cashReceived: paymentMethod === 'EFECTIVO' && numericCash > 0 ? numericCash : undefined,

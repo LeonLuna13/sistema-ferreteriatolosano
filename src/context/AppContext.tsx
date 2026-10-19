@@ -10,6 +10,12 @@ import type {
   DashboardStats,
 } from '../types';
 import { StorageService } from '../services/storageService';
+import {
+  ProductsService,
+  SalesService,
+  WorkOrdersService,
+  checkBackendHealth,
+} from '../services/backendService';
 
 interface ToastNotification {
   id: string;
@@ -26,12 +32,17 @@ interface CreateSaleOptions {
 }
 
 interface AppContextType {
+  // Connection state
+  isBackendConnected: boolean;
+  isLoading: boolean;
+  refreshData: () => Promise<void>;
+
   // Products
   products: Product[];
-  addProduct: (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => Product;
-  updateProduct: (id: string, productData: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  adjustStock: (id: string, delta: number) => void;
+  addProduct: (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Product | null>;
+  updateProduct: (id: string, productData: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  adjustStock: (id: string, delta: number) => Promise<void>;
 
   // POS & Cart
   cart: CartItem[];
@@ -41,14 +52,14 @@ interface AppContextType {
   removeFromCart: (cartItemId: string) => void;
   clearCart: () => void;
   cartSubtotal: number;
-  completeSale: (options: CreateSaleOptions) => Sale | null;
+  completeSale: (options: CreateSaleOptions) => Promise<Sale | null>;
 
   // Work Orders (Cerrajería)
   workOrders: WorkOrder[];
-  addWorkOrder: (orderData: Omit<WorkOrder, 'id' | 'orderNumber' | 'createdAt' | 'balance'>) => WorkOrder;
-  updateWorkOrder: (id: string, orderData: Partial<WorkOrder>) => void;
-  updateWorkOrderStatus: (id: string, status: WorkOrderStatus) => void;
-  deleteWorkOrder: (id: string) => void;
+  addWorkOrder: (orderData: Omit<WorkOrder, 'id' | 'orderNumber' | 'createdAt' | 'balance'>) => Promise<WorkOrder | null>;
+  updateWorkOrder: (id: string, orderData: Partial<WorkOrder>) => Promise<void>;
+  updateWorkOrderStatus: (id: string, status: WorkOrderStatus) => Promise<void>;
+  deleteWorkOrder: (id: string) => Promise<void>;
 
   // Sales History
   sales: Sale[];
@@ -66,24 +77,13 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>(() => StorageService.getProducts());
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>(() => StorageService.getWorkOrders());
-  const [sales, setSales] = useState<Sale[]>(() => StorageService.getSales());
+  const [products, setProducts] = useState<Product[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
-
-  // Persist to localStorage whenever state updates
-  useEffect(() => {
-    StorageService.saveProducts(products);
-  }, [products]);
-
-  useEffect(() => {
-    StorageService.saveWorkOrders(workOrders);
-  }, [workOrders]);
-
-  useEffect(() => {
-    StorageService.saveSales(sales);
-  }, [sales]);
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Toast Notification System
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'info') => {
@@ -91,59 +91,148 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    }, 4500);
   };
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Cargar datos al montar el componente (Intenta API real, si falla usa fallback local)
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const isOnline = await checkBackendHealth();
+
+      if (isOnline) {
+        setIsBackendConnected(true);
+        const [apiProducts, apiOrders, apiSales] = await Promise.all([
+          ProductsService.getAll(),
+          WorkOrdersService.getAll(),
+          SalesService.getAll(),
+        ]);
+
+        setProducts(apiProducts);
+        setWorkOrders(apiOrders);
+        setSales(apiSales);
+        console.log('📡 Datos sincronizados con el Backend (PostgreSQL + Express)');
+      } else {
+        setIsBackendConnected(false);
+        // Fallback transparente a datos locales
+        setProducts(StorageService.getProducts());
+        setWorkOrders(StorageService.getWorkOrders());
+        setSales(StorageService.getSales());
+        console.info('ℹ️ Backend no detectado aún. Operando en modo local/fallback.');
+      }
+    } catch (error) {
+      console.warn('Error al conectar con la API, usando almacenamiento local:', error);
+      setIsBackendConnected(false);
+      setProducts(StorageService.getProducts());
+      setWorkOrders(StorageService.getWorkOrders());
+      setSales(StorageService.getSales());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Sincronizar con localStorage como respaldo local
+  useEffect(() => {
+    if (products.length > 0) StorageService.saveProducts(products);
+  }, [products]);
+
+  useEffect(() => {
+    if (workOrders.length > 0) StorageService.saveWorkOrders(workOrders);
+  }, [workOrders]);
+
+  useEffect(() => {
+    if (sales.length > 0) StorageService.saveSales(sales);
+  }, [sales]);
+
   // --- Product Actions ---
-  const addProduct = (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Product => {
-    const now = new Date().toISOString();
-    const newProduct: Product = {
-      ...productData,
-      id: `prod-${Date.now()}`,
-      createdAt: now,
-      updatedAt: now,
-    };
-    setProducts((prev) => [newProduct, ...prev]);
-    showToast(`Producto "${newProduct.name}" agregado con éxito.`, 'success');
-    return newProduct;
+  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product | null> => {
+    try {
+      if (isBackendConnected) {
+        const created = await ProductsService.create(productData);
+        setProducts((prev) => [created, ...prev]);
+        showToast(`Producto "${created.name}" guardado en la base de datos.`, 'success');
+        return created;
+      } else {
+        // Modo local
+        const now = new Date().toISOString();
+        const newProduct: Product = {
+          ...productData,
+          id: `prod-${Date.now()}`,
+          createdAt: now,
+          updatedAt: now,
+        };
+        setProducts((prev) => [newProduct, ...prev]);
+        showToast(`Producto "${newProduct.name}" agregado (local).`, 'success');
+        return newProduct;
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al crear producto.', 'error');
+      return null;
+    }
   };
 
-  const updateProduct = (id: string, productData: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          return {
-            ...p,
-            ...productData,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return p;
-      })
-    );
-    showToast('Producto actualizado correctamente.', 'success');
+  const updateProduct = async (id: string, productData: Partial<Product>) => {
+    try {
+      if (isBackendConnected) {
+        const updated = await ProductsService.update(id, productData);
+        setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+        showToast('Producto actualizado en la base de datos.', 'success');
+      } else {
+        setProducts((prev) =>
+          prev.map((p) => {
+            if (p.id === id) {
+              return { ...p, ...productData, updatedAt: new Date().toISOString() };
+            }
+            return p;
+          })
+        );
+        showToast('Producto actualizado.', 'success');
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al actualizar producto.', 'error');
+    }
   };
 
-  const deleteProduct = (id: string) => {
-    const product = products.find((p) => p.id === id);
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    showToast(`Producto "${product?.name || 'seleccionado'}" eliminado.`, 'info');
+  const deleteProduct = async (id: string) => {
+    try {
+      const product = products.find((p) => p.id === id);
+      if (isBackendConnected) {
+        await ProductsService.delete(id);
+      }
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      showToast(`Producto "${product?.name || 'seleccionado'}" eliminado.`, 'info');
+    } catch (error: any) {
+      showToast(error.message || 'Error al eliminar producto.', 'error');
+    }
   };
 
-  const adjustStock = (id: string, delta: number) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          const newStock = Math.max(0, p.stock + delta);
-          return { ...p, stock: newStock, updatedAt: new Date().toISOString() };
-        }
-        return p;
-      })
-    );
+  const adjustStock = async (id: string, delta: number) => {
+    try {
+      if (isBackendConnected) {
+        const updated = await ProductsService.adjustStock(id, delta);
+        setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      } else {
+        setProducts((prev) =>
+          prev.map((p) => {
+            if (p.id === id) {
+              const newStock = Math.max(0, p.stock + delta);
+              return { ...p, stock: newStock, updatedAt: new Date().toISOString() };
+            }
+            return p;
+          })
+        );
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al ajustar stock.', 'error');
+    }
   };
 
   // --- POS / Cart Actions ---
@@ -242,7 +331,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return cart.reduce((acc, item) => acc + item.subtotal, 0);
   }, [cart]);
 
-  const completeSale = (options: CreateSaleOptions): Sale | null => {
+  const completeSale = async (options: CreateSaleOptions): Promise<Sale | null> => {
     if (cart.length === 0) {
       showToast('El carrito está vacío. Agrega productos para vender.', 'warning');
       return null;
@@ -258,119 +347,199 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    const cashChange =
-      options.paymentMethod === 'EFECTIVO' && options.cashReceived !== undefined
-        ? Math.max(0, options.cashReceived - total)
-        : 0;
+    try {
+      if (isBackendConnected) {
+        // Enviar al Backend con transacción atómica en PostgreSQL
+        const newSale = await SalesService.create({
+          items: cart.map((c) => ({
+            productId: c.productId,
+            name: c.name,
+            sku: c.sku,
+            price: c.price,
+            quantity: c.quantity,
+            isCustom: c.isCustom || false,
+            subtotal: c.subtotal,
+          })),
+          paymentMethod: options.paymentMethod,
+          discount,
+          cashReceived: options.cashReceived,
+          customerName: options.customerName,
+          notes: options.notes,
+        });
 
-    const todayStr = new Date().toISOString();
-    const countNumber = sales.length + 1;
-    const receiptNumber = `VTA-${new Date().getFullYear()}-${countNumber.toString().padStart(4, '0')}`;
+        // 1. Refrescar inventario para reflejar el stock descontado en PostgreSQL
+        const freshProducts = await ProductsService.getAll();
+        setProducts(freshProducts);
 
-    const newSale: Sale = {
-      id: `sale-${Date.now()}`,
-      receiptNumber,
-      date: todayStr,
-      items: [...cart],
-      subtotal: cartSubtotal,
-      discount,
-      total,
-      paymentMethod: options.paymentMethod,
-      cashReceived: options.cashReceived,
-      cashChange,
-      customerName: options.customerName?.trim() || 'Cliente mostrador',
-      notes: options.notes?.trim() || '',
-    };
+        // 2. Agregar venta al historial
+        setSales((prev) => [newSale, ...prev]);
 
-    // 1. Discount stock from catalog for non-custom items
-    setProducts((prev) =>
-      prev.map((prod) => {
-        const itemSold = cart.find((c) => c.productId === prod.id);
-        if (itemSold) {
-          return {
-            ...prod,
-            stock: Math.max(0, prod.stock - itemSold.quantity),
-            updatedAt: todayStr,
-          };
-        }
-        return prod;
-      })
-    );
+        // 3. Limpiar carrito
+        clearCart();
 
-    // 2. Add sale to history
-    setSales((prev) => [newSale, ...prev]);
+        showToast(
+          `Venta ${newSale.receiptNumber} registrada con éxito ($ ${total.toLocaleString('es-AR')})`,
+          'success'
+        );
+        return newSale;
+      } else {
+        // Modo local fallback
+        const cashChange =
+          options.paymentMethod === 'EFECTIVO' && options.cashReceived !== undefined
+            ? Math.max(0, options.cashReceived - total)
+            : 0;
 
-    // 3. Clear active cart
-    clearCart();
+        const todayStr = new Date().toISOString();
+        const countNumber = sales.length + 1;
+        const receiptNumber = `VTA-${new Date().getFullYear()}-${countNumber.toString().padStart(4, '0')}`;
 
-    showToast(`Venta ${receiptNumber} registrada con éxito ($ ${total.toLocaleString('es-AR')})`, 'success');
-    return newSale;
+        const newSale: Sale = {
+          id: `sale-${Date.now()}`,
+          receiptNumber,
+          date: todayStr,
+          items: [...cart],
+          subtotal: cartSubtotal,
+          discount,
+          total,
+          paymentMethod: options.paymentMethod,
+          cashReceived: options.cashReceived,
+          cashChange,
+          customerName: options.customerName?.trim() || 'Cliente mostrador',
+          notes: options.notes?.trim() || '',
+        };
+
+        setProducts((prev) =>
+          prev.map((prod) => {
+            const itemSold = cart.find((c) => c.productId === prod.id);
+            if (itemSold) {
+              return {
+                ...prod,
+                stock: Math.max(0, prod.stock - itemSold.quantity),
+                updatedAt: todayStr,
+              };
+            }
+            return prod;
+          })
+        );
+
+        setSales((prev) => [newSale, ...prev]);
+        clearCart();
+
+        showToast(
+          `Venta ${receiptNumber} registrada con éxito ($ ${total.toLocaleString('es-AR')})`,
+          'success'
+        );
+        return newSale;
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al procesar la venta.', 'error');
+      return null;
+    }
   };
 
   // --- Work Order Actions (Cerrajería) ---
-  const addWorkOrder = (
+  const addWorkOrder = async (
     orderData: Omit<WorkOrder, 'id' | 'orderNumber' | 'createdAt' | 'balance'>
-  ): WorkOrder => {
-    const nextNumber = workOrders.length + 1;
-    const orderNumber = `OT-${nextNumber.toString().padStart(4, '0')}`;
-    const now = new Date().toISOString();
-    const balance = Math.max(0, orderData.estimatedCost - orderData.deposit);
+  ): Promise<WorkOrder | null> => {
+    try {
+      if (isBackendConnected) {
+        const created = await WorkOrdersService.create(orderData);
+        setWorkOrders((prev) => [created, ...prev]);
+        showToast(`Orden ${created.orderNumber} creada en base de datos.`, 'success');
+        return created;
+      } else {
+        const nextNumber = workOrders.length + 1;
+        const orderNumber = `OT-${nextNumber.toString().padStart(4, '0')}`;
+        const now = new Date().toISOString();
+        const balance = Math.max(0, orderData.estimatedCost - orderData.deposit);
 
-    const newOrder: WorkOrder = {
-      ...orderData,
-      id: `ord-${Date.now()}`,
-      orderNumber,
-      balance,
-      createdAt: now,
-    };
+        const newOrder: WorkOrder = {
+          ...orderData,
+          id: `ord-${Date.now()}`,
+          orderNumber,
+          balance,
+          createdAt: now,
+        };
 
-    setWorkOrders((prev) => [newOrder, ...prev]);
-    showToast(`Orden de trabajo ${orderNumber} creada con éxito.`, 'success');
-    return newOrder;
+        setWorkOrders((prev) => [newOrder, ...prev]);
+        showToast(`Orden de trabajo ${orderNumber} creada (local).`, 'success');
+        return newOrder;
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al crear orden de trabajo.', 'error');
+      return null;
+    }
   };
 
-  const updateWorkOrder = (id: string, orderData: Partial<WorkOrder>) => {
-    setWorkOrders((prev) =>
-      prev.map((order) => {
-        if (order.id === id) {
-          const estimatedCost = orderData.estimatedCost ?? order.estimatedCost;
-          const deposit = orderData.deposit ?? order.deposit;
-          const balance = Math.max(0, estimatedCost - deposit);
+  const updateWorkOrder = async (id: string, orderData: Partial<WorkOrder>) => {
+    try {
+      if (isBackendConnected) {
+        const updated = await WorkOrdersService.update(id, orderData);
+        setWorkOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+        showToast('Orden actualizada en base de datos.', 'success');
+      } else {
+        setWorkOrders((prev) =>
+          prev.map((order) => {
+            if (order.id === id) {
+              const estimatedCost = orderData.estimatedCost ?? order.estimatedCost;
+              const deposit = orderData.deposit ?? order.deposit;
+              const balance = Math.max(0, estimatedCost - deposit);
 
-          return {
-            ...order,
-            ...orderData,
-            estimatedCost,
-            deposit,
-            balance,
-          };
-        }
-        return order;
-      })
-    );
-    showToast('Orden de trabajo actualizada.', 'success');
+              return {
+                ...order,
+                ...orderData,
+                estimatedCost,
+                deposit,
+                balance,
+              };
+            }
+            return order;
+          })
+        );
+        showToast('Orden de trabajo actualizada.', 'success');
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al actualizar orden.', 'error');
+    }
   };
 
-  const updateWorkOrderStatus = (id: string, status: WorkOrderStatus) => {
-    setWorkOrders((prev) =>
-      prev.map((order) => {
-        if (order.id === id) {
-          const completedAt =
-            status === 'TERMINADO' || status === 'ENTREGADO'
-              ? new Date().toISOString()
-              : order.completedAt;
-          return { ...order, status, completedAt };
-        }
-        return order;
-      })
-    );
-    showToast(`Estado de la orden actualizado a: ${status}`, 'info');
+  const updateWorkOrderStatus = async (id: string, status: WorkOrderStatus) => {
+    try {
+      if (isBackendConnected) {
+        const updated = await WorkOrdersService.updateStatus(id, status);
+        setWorkOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+        showToast(`Estado actualizado a: ${status}`, 'info');
+      } else {
+        setWorkOrders((prev) =>
+          prev.map((order) => {
+            if (order.id === id) {
+              const completedAt =
+                status === 'TERMINADO' || status === 'ENTREGADO'
+                  ? new Date().toISOString()
+                  : order.completedAt;
+              return { ...order, status, completedAt };
+            }
+            return order;
+          })
+        );
+        showToast(`Estado actualizado a: ${status}`, 'info');
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Error al cambiar estado.', 'error');
+    }
   };
 
-  const deleteWorkOrder = (id: string) => {
-    const order = workOrders.find((o) => o.id === id);
-    setWorkOrders((prev) => prev.filter((o) => o.id !== id));
-    showToast(`Orden ${order?.orderNumber || ''} eliminada.`, 'info');
+  const deleteWorkOrder = async (id: string) => {
+    try {
+      const order = workOrders.find((o) => o.id === id);
+      if (isBackendConnected) {
+        await WorkOrdersService.delete(id);
+      }
+      setWorkOrders((prev) => prev.filter((o) => o.id !== id));
+      showToast(`Orden ${order?.orderNumber || ''} eliminada.`, 'info');
+    } catch (error: any) {
+      showToast(error.message || 'Error al eliminar orden.', 'error');
+    }
   };
 
   // --- Global Stats calculation ---
@@ -409,6 +578,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
+        isBackendConnected,
+        isLoading,
+        refreshData: loadData,
         products,
         addProduct,
         updateProduct,
