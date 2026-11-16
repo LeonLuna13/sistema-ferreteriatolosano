@@ -16,6 +16,8 @@ export interface Product {
   name: string;
   category: ProductCategory;
   costPrice: number;
+  hasIva?: boolean;
+  profitMargin?: number;
   salePrice: number;
   stock: number;
   minStock: number;

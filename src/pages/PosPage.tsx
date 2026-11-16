@@ -35,7 +35,7 @@ export const PosPage: React.FC = () => {
   // Payment configuration
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('EFECTIVO');
   const [cashReceived, setCashReceived] = useState<number | ''>('');
-  const [discount, setDiscount] = useState<number | ''>('');
+  const [discountPercent, setDiscountPercent] = useState<number | ''>('');
   const [customerName, setCustomerName] = useState('');
   const [saleNotes, setSaleNotes] = useState('');
 
@@ -61,8 +61,9 @@ export const PosPage: React.FC = () => {
   }, [products, searchTerm, selectedCategory]);
 
   // Totals
-  const numericDiscount = Number(discount) || 0;
-  const grandTotal = Math.max(0, cartSubtotal - numericDiscount);
+  const numericDiscountPercent = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+  const discountAmount = Math.round((cartSubtotal * numericDiscountPercent) / 100);
+  const grandTotal = Math.max(0, cartSubtotal - discountAmount);
   const numericCash = Number(cashReceived) || 0;
   const cashChange =
     paymentMethod === 'EFECTIVO' && numericCash > grandTotal
@@ -79,7 +80,7 @@ export const PosPage: React.FC = () => {
 
     const sale = await completeSale({
       paymentMethod,
-      discount: numericDiscount,
+      discount: discountAmount,
       cashReceived: paymentMethod === 'EFECTIVO' && numericCash > 0 ? numericCash : undefined,
       customerName: customerName.trim() || undefined,
       notes: saleNotes.trim() || undefined,
@@ -89,7 +90,7 @@ export const PosPage: React.FC = () => {
       setCompletedSale(sale);
       // Reset form fields
       setCashReceived('');
-      setDiscount('');
+      setDiscountPercent('');
       setCustomerName('');
       setSaleNotes('');
     }
@@ -412,18 +413,28 @@ export const PosPage: React.FC = () => {
 
             <div>
               <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
-                Descuento ($)
+                Descuento (%)
               </label>
-              <input
-                type="number"
-                min="0"
-                value={discount}
-                onChange={(e) =>
-                  setDiscount(e.target.value === '' ? '' : Number(e.target.value))
-                }
-                placeholder="0"
-                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:outline-none text-emerald-700 font-semibold"
-              />
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="any"
+                  value={discountPercent}
+                  onChange={(e) => {
+                    if (e.target.value === '') {
+                      setDiscountPercent('');
+                    } else {
+                      const val = Number(e.target.value);
+                      setDiscountPercent(Math.min(100, Math.max(0, val)));
+                    }
+                  }}
+                  placeholder="0"
+                  className="w-full rounded border border-slate-300 bg-white pl-2 pr-6 py-1 text-xs focus:outline-none text-emerald-700 font-semibold"
+                />
+                <span className="absolute right-2 top-1 text-xs font-bold text-slate-400">%</span>
+              </div>
             </div>
           </div>
 
@@ -433,10 +444,10 @@ export const PosPage: React.FC = () => {
               <span>Subtotal:</span>
               <span>${cartSubtotal.toLocaleString('es-AR')}</span>
             </div>
-            {numericDiscount > 0 && (
+            {numericDiscountPercent > 0 && (
               <div className="flex justify-between text-xs text-emerald-600 font-medium">
-                <span>Descuento:</span>
-                <span>-${numericDiscount.toLocaleString('es-AR')}</span>
+                <span>Descuento ({numericDiscountPercent}%):</span>
+                <span>-${discountAmount.toLocaleString('es-AR')}</span>
               </div>
             )}
             <div className="flex justify-between items-baseline pt-1">

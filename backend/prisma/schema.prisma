@@ -8,18 +8,20 @@ datasource db {
 }
 
 model Product {
-  id          String     @id @default(uuid())
-  sku         String     @unique
-  name        String
-  category    String
-  costPrice   Float
-  salePrice   Float
-  stock       Int
-  minStock    Int
-  description String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  saleItems   SaleItem[]
+  id           String     @id @default(uuid())
+  sku          String     @unique
+  name         String
+  category     String
+  costPrice    Float
+  hasIva       Boolean    @default(false)
+  profitMargin Float      @default(0)
+  salePrice    Float
+  stock        Int
+  minStock     Int
+  description  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  saleItems    SaleItem[]
 
   @@map("products")
 }

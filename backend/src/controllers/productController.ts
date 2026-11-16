@@ -65,18 +65,46 @@ export const ProductController = {
   // POST /api/products
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const { sku, name, category, costPrice, salePrice, stock, minStock, description } = req.body;
+      const {
+        sku,
+        name,
+        category,
+        costPrice,
+        hasIva,
+        profitMargin,
+        salePrice,
+        stock,
+        minStock,
+        description,
+      } = req.body;
 
       if (!sku || !name || !category) {
         throw new AppError('Los campos sku, nombre y categoría son obligatorios.', 400);
       }
 
-      const numCost = Number(costPrice);
-      const numSale = Number(salePrice);
+      const numCost = Number(costPrice ?? 0);
+      const boolHasIva = Boolean(hasIva);
+      const costWithIva = boolHasIva ? numCost * 1.21 : numCost;
+
+      const hasMargin = profitMargin !== undefined && profitMargin !== '';
+      const hasSale = salePrice !== undefined && salePrice !== '';
+
+      let numMargin = hasMargin ? Number(profitMargin) : 0;
+      const numSale = hasSale
+        ? Number(salePrice)
+        : Math.round(costWithIva * (1 + numMargin / 100));
+
+      if (!hasMargin && hasSale) {
+        numMargin =
+          costWithIva > 0
+            ? Number((((numSale - costWithIva) / costWithIva) * 100).toFixed(2))
+            : 0;
+      }
+
       const numStock = Number(stock ?? 0);
       const numMinStock = Number(minStock ?? 5);
 
-      if (isNaN(numCost) || isNaN(numSale) || numCost < 0 || numSale < 0) {
+      if (isNaN(numCost) || isNaN(numSale) || isNaN(numMargin) || numCost < 0 || numSale < 0) {
         throw new AppError('Los precios deben ser valores numéricos válidos y no negativos.', 400);
       }
 
@@ -95,6 +123,8 @@ export const ProductController = {
           name: name.trim(),
           category,
           costPrice: numCost,
+          hasIva: boolHasIva,
+          profitMargin: numMargin,
           salePrice: numSale,
           stock: numStock,
           minStock: numMinStock,
@@ -116,7 +146,18 @@ export const ProductController = {
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;
-      const { sku, name, category, costPrice, salePrice, stock, minStock, description } = req.body;
+      const {
+        sku,
+        name,
+        category,
+        costPrice,
+        hasIva,
+        profitMargin,
+        salePrice,
+        stock,
+        minStock,
+        description,
+      } = req.body;
 
       const existing = await prisma.product.findUnique({
         where: { id },
@@ -143,6 +184,8 @@ export const ProductController = {
           ...(name && { name: name.trim() }),
           ...(category && { category }),
           ...(costPrice !== undefined && { costPrice: Number(costPrice) }),
+          ...(hasIva !== undefined && { hasIva: Boolean(hasIva) }),
+          ...(profitMargin !== undefined && { profitMargin: Number(profitMargin) }),
           ...(salePrice !== undefined && { salePrice: Number(salePrice) }),
           ...(stock !== undefined && { stock: Number(stock) }),
           ...(minStock !== undefined && { minStock: Number(minStock) }),

@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "products" ADD COLUMN     "hasIva" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "profitMargin" DOUBLE PRECISION NOT NULL DEFAULT 0;

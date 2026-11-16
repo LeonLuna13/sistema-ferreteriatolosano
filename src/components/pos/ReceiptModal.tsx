@@ -74,11 +74,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, sal
                     <span className="font-bold text-blue-900">{item.quantity}x</span> {item.name}
                   </p>
                   <p className="text-[10px] text-slate-500">
-                    ${item.price.toLocaleString('es-AR')} c/u {item.isCustom ? '(Mano de obra)' : ''}
+                    ${Number(item.price || 0).toLocaleString('es-AR')} c/u {item.isCustom ? '(Mano de obra)' : ''}
                   </p>
                 </div>
                 <span className="font-bold text-slate-900 shrink-0">
-                  ${item.subtotal.toLocaleString('es-AR')}
+                  ${Number(item.subtotal || 0).toLocaleString('es-AR')}
                 </span>
               </div>
             ))}
@@ -88,28 +88,34 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, sal
           <div className="space-y-1.5 pt-1">
             <div className="flex justify-between text-slate-600">
               <span>Subtotal:</span>
-              <span>${sale.subtotal.toLocaleString('es-AR')}</span>
+              <span>${Number(sale.subtotal || 0).toLocaleString('es-AR')}</span>
             </div>
-            {sale.discount > 0 && (
+            {Number(sale.discount || 0) > 0 && (
               <div className="flex justify-between text-emerald-600 font-medium">
-                <span>Descuento aplicado:</span>
-                <span>-${sale.discount.toLocaleString('es-AR')}</span>
+                <span>
+                  Descuento aplicado
+                  {Number(sale.subtotal) > 0
+                    ? ` (${Math.round((Number(sale.discount) / Number(sale.subtotal)) * 100)}%)`
+                    : ''}
+                  :
+                </span>
+                <span>-${Number(sale.discount).toLocaleString('es-AR')}</span>
               </div>
             )}
             <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1 border-t border-slate-300">
               <span>TOTAL ABONADO:</span>
-              <span className="text-blue-950">${sale.total.toLocaleString('es-AR')}</span>
+              <span className="text-blue-950">${Number(sale.total || 0).toLocaleString('es-AR')}</span>
             </div>
 
-            {sale.paymentMethod === 'EFECTIVO' && sale.cashReceived !== undefined && (
+            {sale.paymentMethod === 'EFECTIVO' && sale.cashReceived != null && (
               <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-600 space-y-0.5">
                 <div className="flex justify-between">
                   <span>Efectivo entregado:</span>
-                  <span>${sale.cashReceived.toLocaleString('es-AR')}</span>
+                  <span>${Number(sale.cashReceived).toLocaleString('es-AR')}</span>
                 </div>
                 <div className="flex justify-between font-bold text-emerald-700">
                   <span>Vuelto entregado:</span>
-                  <span>${(sale.cashChange || 0).toLocaleString('es-AR')}</span>
+                  <span>${Number(sale.cashChange || 0).toLocaleString('es-AR')}</span>
                 </div>
               </div>
             )}

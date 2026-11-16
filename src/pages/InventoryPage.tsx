@@ -309,7 +309,13 @@ export const InventoryPage: React.FC = () => {
 
                       {/* Cost */}
                       <td className="py-3.5 px-4 text-right text-slate-500">
-                        ${p.costPrice.toLocaleString('es-AR')}
+                        <div>${p.costPrice.toLocaleString('es-AR')}</div>
+                        {(p.hasIva || p.profitMargin !== undefined) && (
+                          <div className="text-[10px] text-slate-400">
+                            {p.hasIva ? '+IVA ' : ''}
+                            {p.profitMargin !== undefined ? `(${p.profitMargin}%)` : ''}
+                          </div>
+                        )}
                       </td>
 
                       {/* Sale Price */}
